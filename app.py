@@ -41,3 +41,6 @@ class WordForm(Form):
 				return render_template('home.html',form=form, error=f"No Result for {word}, Check your speeling!")
 		else:
 			return render_template('home.html', form = form)
+
+if __name__ == "__main__":
+	app.run(debug=True)
