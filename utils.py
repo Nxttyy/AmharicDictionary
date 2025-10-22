@@ -1,38 +1,82 @@
 import re
 
 
-def format_result(amh_en_text):
-    # Split Amharic and English parts
-    parts = amh_en_text.split("n., adj., & v.")
-    amh_part = parts[0].strip()
-    en_part = "n., adj., & v." + parts[1].strip() if len(parts) > 1 else ""
+def parse_amharic_definitions(text):
+    """
+    Parse Amharic definitions formatted like:
+    '1 ጥሩ 2 ተስማሚ 3 ጎበዝ ...'
+    """
+    pattern = r"(?<!\d)(\d+)\s"  # match numbers followed by space
+    matches = list(re.finditer(pattern, text))
 
-    # Split Amharic numbered meanings
-    amh_items = re.findall(r"\d+\s*([^0-9]+)", amh_part)
-    amh_formatted = [item.strip() for item in amh_items if item.strip()]
+    if not matches:
+        return {"1": text.strip()}  # fallback if no numbers found
 
-    # English part – split by numbering or grammar symbols
-    en_lines = en_part.split("--")
-    grammar_part = en_lines[0].strip()
-    definitions = [f"--{line.strip()}" for line in en_lines[1:]]
+    result = {}
+    for i, match in enumerate(matches):
+        num = match.group(1)
+        start = match.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        definition = text[start:end].strip()
+        if definition:
+            result[num] = definition
 
-    return amh_formatted, grammar_part, definitions
+    return result
 
 
-def split_english_definition(en_text):
-    # Clean leading "EN:" or other prefixes
-    en_text = re.sub(r"^EN:\s*", "", en_text.strip())
+def parse_dictionary_entry(text):
+    # Extract sections based on POS markers like --n. or --v.
+    sections = re.finditer(r"--([a-z.]+)\s", text)
+    entry = {}
+    last_end = 0
+    last_pos = None
 
-    # Step 1: Split at major numbering like 1, 2, 3 etc. but keep the numbers
-    parts = re.split(r"(?=\b\d+\s*[a-z]?\b)", en_text)
+    for match in sections:
+        pos = match.group(1).strip(".")
+        if last_pos:
+            section_text = text[last_end : match.start()].strip()
+            entry[last_pos] = extract_numbered_definitions(section_text)
+        last_pos = pos
+        last_end = match.end()
 
-    # Step 2: If a part has multiple sub-parts like "a ..." and "b ...", split further
-    final_parts = []
-    for part in parts:
-        subparts = re.split(r"(?=\s*[a-z]\s)", part.strip())
-        final_parts.extend([p.strip() for p in subparts if p.strip()])
+    # final section
+    if last_pos:
+        section_text = text[last_end:].strip()
+        entry[last_pos] = extract_numbered_definitions(section_text)
 
-    # Step 3: Filter out extremely short junk fragments
-    final_parts = [p for p in final_parts if len(p) > 3]
+    print("ENT", entry, "\n\n", normalize_definitions(entry))
+    return normalize_definitions(entry)
 
-    return final_parts
+
+def normalize_definitions(defs):
+    """
+    Convert all lists of strings into list of dicts with numbers as keys
+    """
+    normalized = {}
+    for pos, content in defs.items():
+        new_list = []
+        if all(isinstance(d, str) for d in content):
+            # convert strings to numbered dicts
+            for i, text in enumerate(content, start=1):
+                new_list.append({str(i): text})
+        else:
+            # already list of dicts
+            new_list = content
+        normalized[pos] = new_list
+    return normalized
+
+
+def extract_numbered_definitions(section_text):
+    """Extract numbered definitions only (ignore a, b, etc.)."""
+    defs = []
+    numbered = list(re.finditer(r"(?<!\d)(\d+)\s", section_text))
+    if not numbered:
+        return [section_text.strip()]
+
+    for i, num_match in enumerate(numbered):
+        num = num_match.group(1)
+        start = num_match.end()
+        end = numbered[i + 1].start() if i + 1 < len(numbered) else len(section_text)
+        definition_text = section_text[start:end].strip().rstrip(".")
+        defs.append({num: definition_text})
+    return defs
