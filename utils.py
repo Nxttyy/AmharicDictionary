@@ -44,7 +44,6 @@ def parse_dictionary_entry(text):
         section_text = text[last_end:].strip()
         entry[last_pos] = extract_numbered_definitions(section_text)
 
-    print("ENT", entry, "\n\n", normalize_definitions(entry))
     return normalize_definitions(entry)
 
 
